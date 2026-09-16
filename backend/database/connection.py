@@ -17,6 +17,12 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///backend/database/memory.db")
 connect_args = {}
 if DATABASE_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False
+    # Extract path and ensure containing folder exists
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    dir_name = os.path.dirname(db_path)
+    if dir_name and not os.path.exists(dir_name):
+        os.makedirs(dir_name, exist_ok=True)
+        logger.info("Created database directory: %s", dir_name)
 
 try:
     logger.info("Initializing database engine with URL: %s", DATABASE_URL)
