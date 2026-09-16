@@ -1,0 +1,41 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Configuration
+.env
+
+# Database & SQLite files
+*.db
+backend/database/memory.db
+
+# File storage and uploads (ignore content, keep directory via gitkeep)
+uploads/*
+!uploads/.gitkeep
+
+# FAISS Vector indices (ignore content, keep directory via gitkeep)
+vector_store/*
+!vector_store/.gitkeep
+
+# IDEs & System files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+Thumbs.db
+.DS_Store
+
+# Testing Cache
+.pytest_cache/
+.coverage
+htmlcov/
