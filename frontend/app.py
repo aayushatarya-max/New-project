@@ -81,6 +81,15 @@ def delete_file(file_id):
         st.sidebar.error(f"Error connecting to backend: {e}")
         return False
 
+def get_file_content(file_id):
+    try:
+        res = requests.get(f"{API_URL}/files/{file_id}/download", timeout=15)
+        if res.status_code == 200:
+            return res.content
+    except Exception:
+        pass
+    return None
+
 # --- Sidebar: Control Panel ---
 with st.sidebar:
     st.title("🧠 Memory Manager")
@@ -131,11 +140,17 @@ with st.sidebar:
                 st.caption(f"Size: {f['filesize']} bytes")
                 st.caption(f"Tags: {', '.join(f['tags'])}")
                 
-                download_url = f"{API_URL}/files/{f['id']}/download"
-                st.markdown(f'<a href="{download_url}" target="_blank" style="display:inline-block; margin-bottom: 8px; padding: 6px 14px; background-color: #ff4b4b; color: white; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 13px;">📥 Open / Download File</a>', unsafe_allow_html=True)
-                
-                if f['filetype'].lower() in ['png', 'jpg', 'jpeg']:
-                    st.image(download_url, caption=f['filename'], use_container_width=True)
+                f_bytes = get_file_content(f['id'])
+                if f_bytes:
+                    st.download_button(
+                        label=f"📥 Download / Open File",
+                        data=f_bytes,
+                        file_name=f['filename'],
+                        key=f"sb_dl_{f['id']}",
+                        use_container_width=True
+                    )
+                    if f['filetype'].lower() in ['png', 'jpg', 'jpeg']:
+                        st.image(f_bytes, caption=f['filename'], use_container_width=True)
                     
                 if st.button("Delete File", key=f"del_{f['id']}", help="Permanently delete and de-index this file"):
                     if delete_file(f['id']):
@@ -197,8 +212,6 @@ if st.button("Search", type="primary", use_container_width=True) or search_query
                             file_type = (result.get('filetype') or result.get('file', {}).get('filetype', 'Unknown')).lower()
                             page = result.get('page_number', 1)
                             
-                            download_url = f"{API_URL}/files/{file_id}/download" if file_id else "#"
-                            
                             st.markdown(f"""
                             <div class="result-card">
                                 <div class="result-title">📄 {filename} <span style="font-size: 14px; font-weight: normal; color: gray;">(Page {page})</span></div>
@@ -208,14 +221,22 @@ if st.button("Search", type="primary", use_container_width=True) or search_query
                                 <div class="result-text">
                                     "{result['chunk_text']}"
                                 </div>
-                                <div style="margin-top: 12px; margin-bottom: 8px;">
-                                    <a href="{download_url}" target="_blank" style="display:inline-block; padding: 10px 18px; background-color: #ff4b4b; color: white; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px;">🌐 OPEN / ACCESS FILE DIRECTLY</a>
-                                </div>
                             </div>
                             """, unsafe_allow_html=True)
                             
-                            if file_type in ['png', 'jpg', 'jpeg'] and file_id:
-                                st.image(download_url, caption=f"Preview: {filename}", use_container_width=True)
+                            if file_id:
+                                res_bytes = get_file_content(file_id)
+                                if res_bytes:
+                                    st.download_button(
+                                        label=f"📥 Open / Download {filename}",
+                                        data=res_bytes,
+                                        file_name=filename,
+                                        key=f"card_dl_{file_id}_{idx}",
+                                        type="primary",
+                                        use_container_width=True
+                                    )
+                                    if file_type in ['png', 'jpg', 'jpeg']:
+                                        st.image(res_bytes, caption=f"Preview: {filename}", use_container_width=True)
                 else:
                     st.error(f"Search failed: {response.json().get('detail')}")
             except Exception as e:
