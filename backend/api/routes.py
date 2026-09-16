@@ -94,10 +94,18 @@ def upload_file(
             
         elif file_type in ["png", "jpg", "jpeg"]:
             text = ImageService.extract_text(file_path)
+            if not text or not text.strip():
+                logger.info("No OCR text found in image '%s'. Using metadata fallback.", filename)
+                clean_name = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ")
+                text = f"Image file: {filename}. Photo / graphic document ({clean_name})."
             pages = [{"page_number": 1, "text": text}]
             
         elif file_type in ["mp3", "wav", "m4a"]:
             text = SpeechService.transcribe(file_path)
+            if not text or not text.strip():
+                logger.info("No speech transcription found in audio '%s'. Using metadata fallback.", filename)
+                clean_name = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ")
+                text = f"Audio file: {filename}. Voice / sound recording ({clean_name})."
             pages = [{"page_number": 1, "text": text}]
             
     except Exception as e:

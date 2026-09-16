@@ -97,12 +97,19 @@ with st.sidebar:
             with st.spinner("Processing and Indexing..."):
                 try:
                     files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
-                    res = requests.post(f"{API_URL}/upload", files=files)
+                    res = requests.post(f"{API_URL}/upload", files=files, timeout=90)
                     if res.status_code == 201:
                         st.success(f"Successfully indexed: {uploaded_file.name}")
+                        st.session_state["files"] = fetch_files()
+                        st.rerun()
                     else:
-                        error_msg = res.json().get("detail", "Unknown Error")
+                        try:
+                            error_msg = res.json().get("detail", "Unknown Error")
+                        except Exception:
+                            error_msg = f"Server returned HTTP status code {res.status_code}"
                         st.error(f"Upload failed: {error_msg}")
+                except requests.exceptions.Timeout:
+                    st.error("Upload timed out. Try uploading a smaller file or image.")
                 except Exception as e:
                     st.error(f"Error during upload: {e}")
     

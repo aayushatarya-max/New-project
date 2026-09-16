@@ -12,12 +12,13 @@ class PDFService:
     """
 
     @staticmethod
-    def extract_text(file_path: str) -> List[Dict[str, Any]]:
+    def extract_text(file_path: str, max_pages: int = 50) -> List[Dict[str, Any]]:
         """
         Extract text page-by-page from a PDF document.
 
         Args:
             file_path (str): The absolute path to the PDF file.
+            max_pages (int): Max pages to extract to optimize memory and processing time.
 
         Returns:
             List[Dict[str, Any]]: A list of dictionaries containing:
@@ -38,9 +39,13 @@ class PDFService:
         try:
             # Open PDF document
             reader = PdfReader(file_path)
-            logger.info("Successfully opened PDF %s. Total pages: %d", file_path, len(reader.pages))
+            total_pdf_pages = len(reader.pages)
+            logger.info("Successfully opened PDF %s. Total pages: %d", file_path, total_pdf_pages)
             
             for i, page in enumerate(reader.pages):
+                if i >= max_pages:
+                    logger.warning("Reached maximum page limit (%d/%d) for PDF %s.", max_pages, total_pdf_pages, file_path)
+                    break
                 page_number = i + 1
                 # Extract text
                 text = page.extract_text() or ""
