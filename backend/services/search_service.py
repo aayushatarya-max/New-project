@@ -329,12 +329,55 @@ class SearchService:
             else:
                 merged_map[chunk_id] = item
 
-        # Filename keyword boost
-        keywords = [k.strip().lower() for k in query.split() if len(k.strip()) > 1]
+        # Filename keyword boost with stop-words filtering
+        stop_words = {"where", "is", "my", "the", "a", "an", "in", "on", "at", "for", "to", "of", "and", "or", "it", "this", "that", "show", "find", "me", "what", "can", "you", "get"}
+        keywords = [k.strip().lower() for k in query.split() if len(k.strip()) > 1 and k.strip().lower() not in stop_words]
+        if not keywords:
+            keywords = [k.strip().lower() for k in query.split() if len(k.strip()) > 1]
+
         for chunk_id, item in merged_map.items():
             fname = item["filename"].lower()
             if any(kw in fname for kw in keywords):
-                item["score"] = min(1.0, item["score"] + 0.35)
+                item["score"] = min(1.0, item["score"] + 0.45)
+
+        # 4. Direct FileModel fallback: ensure files matching filename/type appear even if chunk text is missing
+        if keywords:
+            from backend.models.models import FileModel
+            existing_file_ids = {item["file_id"] for item in merged_map.values()}
+            
+            # Query files where filename or filetype matches any keyword
+            from sqlalchemy import or_
+            file_filters = [FileModel.filename.like(f"%{kw}%") for kw in keywords]
+            matched_files = db.query(FileModel).filter(or_(*file_filters)).all()
+            
+            for file_obj in matched_files:
+                if file_obj.id not in existing_file_ids:
+                    # Construct direct result for matching file
+                    fname_matches = sum(1 for kw in keywords if kw in file_obj.filename.lower())
+                    file_score = float(min(0.95, 0.70 + 0.25 * (fname_matches / len(keywords))))
+                    
+                    # Pick first chunk if exists, or dummy snippet
+                    chunk_id = file_obj.chunks[0].id if file_obj.chunks else -file_obj.id
+                    chunk_text = file_obj.chunks[0].chunk_text if file_obj.chunks else f"File document: {file_obj.filename}"
+                    page_num = file_obj.chunks[0].page_number if file_obj.chunks else 1
+                    
+                    merged_map[chunk_id] = {
+                        "chunk_id": chunk_id,
+                        "file_id": file_obj.id,
+                        "filename": file_obj.filename,
+                        "filepath": file_obj.filepath,
+                        "filetype": file_obj.filetype,
+                        "file": {
+                            "id": file_obj.id,
+                            "filename": file_obj.filename,
+                            "filetype": file_obj.filetype,
+                            "filepath": file_obj.filepath
+                        },
+                        "page_number": page_num,
+                        "chunk_text": chunk_text,
+                        "score": file_score,
+                        "created_at": file_obj.created_at
+                    }
 
         # Sort merged results by final composite score descending
         hybrid_results = list(merged_map.values())
@@ -342,6 +385,6 @@ class SearchService:
 
         # Filter out trailing weak irrelevant noise if we have strong matches
         if hybrid_results and hybrid_results[0]["score"] >= 0.5:
-            hybrid_results = [r for r in hybrid_results if r["score"] >= 0.30]
+            hybrid_results = [r for r in hybrid_results if r["score"] >= 0.35]
 
         return hybrid_results[:limit]

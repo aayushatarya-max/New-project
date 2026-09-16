@@ -130,6 +130,13 @@ with st.sidebar:
             with st.expander(f"📄 {f['filename']} ({f['filetype']})"):
                 st.caption(f"Size: {f['filesize']} bytes")
                 st.caption(f"Tags: {', '.join(f['tags'])}")
+                
+                download_url = f"{API_URL}/files/{f['id']}/download"
+                st.markdown(f'<a href="{download_url}" target="_blank" style="display:inline-block; margin-bottom: 8px; padding: 6px 14px; background-color: #ff4b4b; color: white; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 13px;">📥 Open / Download File</a>', unsafe_allow_html=True)
+                
+                if f['filetype'].lower() in ['png', 'jpg', 'jpeg']:
+                    st.image(download_url, caption=f['filename'], use_container_width=True)
+                    
                 if st.button("Delete File", key=f"del_{f['id']}", help="Permanently delete and de-index this file"):
                     if delete_file(f['id']):
                         st.session_state["files"] = fetch_files()
@@ -187,7 +194,7 @@ if st.button("Search", type="primary", use_container_width=True) or search_query
                             score = result.get('score', 0)
                             file_id = result.get('file_id') or result.get('file', {}).get('id')
                             filename = result.get('filename') or result.get('file', {}).get('filename', 'Unknown File')
-                            file_type = result.get('filetype') or result.get('file', {}).get('filetype', 'Unknown')
+                            file_type = (result.get('filetype') or result.get('file', {}).get('filetype', 'Unknown')).lower()
                             page = result.get('page_number', 1)
                             
                             download_url = f"{API_URL}/files/{file_id}/download" if file_id else "#"
@@ -196,16 +203,19 @@ if st.button("Search", type="primary", use_container_width=True) or search_query
                             <div class="result-card">
                                 <div class="result-title">📄 {filename} <span style="font-size: 14px; font-weight: normal; color: gray;">(Page {page})</span></div>
                                 <div class="result-meta">
-                                    Type: {file_type.upper()} • Score: {score:.4f} • Relevance: {'🔥 High' if score > 0.6 else '👍 Relevant'}
+                                    Type: {file_type.upper()} • Score: {score:.4f} • Relevance: {'🔥 High Match' if score > 0.6 else '👍 Relevant'}
                                 </div>
                                 <div class="result-text">
                                     "{result['chunk_text']}"
                                 </div>
-                                <div style="margin-top: 12px;">
-                                    <a href="{download_url}" target="_blank" style="display:inline-block; padding: 8px 16px; background-color: #ff4b4b; color: white; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px;">📥 Open / Download File</a>
+                                <div style="margin-top: 12px; margin-bottom: 8px;">
+                                    <a href="{download_url}" target="_blank" style="display:inline-block; padding: 10px 18px; background-color: #ff4b4b; color: white; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px;">🌐 OPEN / ACCESS FILE DIRECTLY</a>
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
+                            
+                            if file_type in ['png', 'jpg', 'jpeg'] and file_id:
+                                st.image(download_url, caption=f"Preview: {filename}", use_container_width=True)
                 else:
                     st.error(f"Search failed: {response.json().get('detail')}")
             except Exception as e:
