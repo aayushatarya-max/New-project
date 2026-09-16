@@ -185,19 +185,24 @@ if st.button("Search", type="primary", use_container_width=True) or search_query
                         st.subheader(f"Found {len(results)} matches")
                         for idx, result in enumerate(results):
                             score = result.get('score', 0)
-                            file_meta = result.get('file', {})
-                            filename = file_meta.get('filename', 'Unknown')
-                            file_type = file_meta.get('filetype', 'Unknown')
-                            page = result.get('page_number', '?')
+                            file_id = result.get('file_id') or result.get('file', {}).get('id')
+                            filename = result.get('filename') or result.get('file', {}).get('filename', 'Unknown File')
+                            file_type = result.get('filetype') or result.get('file', {}).get('filetype', 'Unknown')
+                            page = result.get('page_number', 1)
+                            
+                            download_url = f"{API_URL}/files/{file_id}/download" if file_id else "#"
                             
                             st.markdown(f"""
                             <div class="result-card">
                                 <div class="result-title">📄 {filename} <span style="font-size: 14px; font-weight: normal; color: gray;">(Page {page})</span></div>
                                 <div class="result-meta">
-                                    Type: {file_type.upper()} • Score: {score:.4f} • Relevance: {'🔥' if score > 0.7 else '👍'}
+                                    Type: {file_type.upper()} • Score: {score:.4f} • Relevance: {'🔥 High' if score > 0.6 else '👍 Relevant'}
                                 </div>
                                 <div class="result-text">
                                     "{result['chunk_text']}"
+                                </div>
+                                <div style="margin-top: 12px;">
+                                    <a href="{download_url}" target="_blank" style="display:inline-block; padding: 8px 16px; background-color: #ff4b4b; color: white; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px;">📥 Open / Download File</a>
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)

@@ -317,3 +317,25 @@ def delete_indexed_file(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete indexed file: {e}"
         )
+
+
+@router.get("/files/{file_id}/download")
+def download_file(
+    file_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Serve raw file for direct viewing or downloading.
+    """
+    from fastapi.responses import FileResponse
+    db_file = FileRepository.get_file(db, file_id)
+    if not db_file or not os.path.exists(db_file.filepath):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File with ID {file_id} not found on disk."
+        )
+    return FileResponse(
+        path=db_file.filepath,
+        filename=db_file.filename
+    )
+

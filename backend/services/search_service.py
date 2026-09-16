@@ -182,9 +182,16 @@ class SearchService:
                 
             results.append({
                 "chunk_id": chunk.id,
+                "file_id": chunk.file.id,
                 "filename": chunk.file.filename,
                 "filepath": chunk.file.filepath,
                 "filetype": chunk.file.filetype,
+                "file": {
+                    "id": chunk.file.id,
+                    "filename": chunk.file.filename,
+                    "filetype": chunk.file.filetype,
+                    "filepath": chunk.file.filepath
+                },
                 "page_number": chunk.page_number,
                 "chunk_text": chunk.chunk_text,
                 "score": score_percentage,
@@ -207,13 +214,25 @@ class SearchService:
     ) -> List[Dict[str, Any]]:
         """
         Perform a traditional keyword search using SQL LIKE queries
-        on the chunk text.
+        on chunk text and filename metadata.
         """
         if not query or not query.strip():
             return []
 
-        search_pattern = f"%{query.strip()}%"
-        query_db = db.query(ChunkModel).join(FileModel).filter(ChunkModel.chunk_text.like(search_pattern))
+        # Split query into keywords
+        keywords = [k.strip().lower() for k in query.split() if len(k.strip()) > 1]
+        if not keywords:
+            keywords = [query.strip().lower()]
+
+        # Query chunks where text or filename matches
+        from sqlalchemy import or_
+        filters = []
+        for kw in keywords:
+            pattern = f"%{kw}%"
+            filters.append(ChunkModel.chunk_text.like(pattern))
+            filters.append(FileModel.filename.like(pattern))
+
+        query_db = db.query(ChunkModel).join(FileModel).filter(or_(*filters))
 
         # Apply metadata filters
         if filetype:
@@ -227,19 +246,35 @@ class SearchService:
 
         results = []
         for chunk in chunks:
-            # For keyword search, similarity score is assigned based on keyword presence
-            # Return baseline score of 0.8 for keyword occurrences
+            # Score based on how many query keywords match filename vs chunk text
+            fname_lower = chunk.file.filename.lower()
+            text_lower = chunk.chunk_text.lower()
+            
+            fname_matches = sum(1 for kw in keywords if kw in fname_lower)
+            text_matches = sum(1 for kw in keywords if kw in text_lower)
+            
+            score = 0.5 + (0.3 * (fname_matches / len(keywords))) + (0.2 * (text_matches / len(keywords)))
+            score = float(min(score, 1.0))
+
             results.append({
                 "chunk_id": chunk.id,
+                "file_id": chunk.file.id,
                 "filename": chunk.file.filename,
                 "filepath": chunk.file.filepath,
                 "filetype": chunk.file.filetype,
+                "file": {
+                    "id": chunk.file.id,
+                    "filename": chunk.file.filename,
+                    "filetype": chunk.file.filetype,
+                    "filepath": chunk.file.filepath
+                },
                 "page_number": chunk.page_number,
                 "chunk_text": chunk.chunk_text,
-                "score": 0.8,
+                "score": score,
                 "created_at": chunk.file.created_at
             })
             
+        results.sort(key=lambda x: x["score"], reverse=True)
         return results[:limit]
 
     @classmethod
@@ -262,7 +297,8 @@ class SearchService:
             limit=limit * 2,
             filetype=filetype,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            min_score=0.20
         )
 
         # 2. Fetch keyword results
@@ -278,26 +314,34 @@ class SearchService:
         # 3. Merge results using chunk_id
         merged_map: Dict[int, Dict[str, Any]] = {}
         
-        # Process semantic hits (weight: 0.7)
-        for idx, item in enumerate(semantic_results):
+        # Process semantic hits
+        for item in semantic_results:
             chunk_id = item["chunk_id"]
-            # Reciprocal rank weighting can also be used, but direct linear score combinations
-            # are easier to interpret for user interfaces.
-            item["score"] = item["score"] * 0.7
             merged_map[chunk_id] = item
 
-        # Process keyword hits (weight: 0.3)
-        for idx, item in enumerate(keyword_results):
+        # Process keyword hits (boost existing or add new)
+        for item in keyword_results:
             chunk_id = item["chunk_id"]
             if chunk_id in merged_map:
-                # Add weighting for hybrid overlap (score + 0.3 * keyword score)
-                merged_map[chunk_id]["score"] += item["score"] * 0.3
+                # Overlap boost
+                existing_score = merged_map[chunk_id]["score"]
+                merged_map[chunk_id]["score"] = min(1.0, existing_score + 0.25)
             else:
-                item["score"] = item["score"] * 0.3
                 merged_map[chunk_id] = item
+
+        # Filename keyword boost
+        keywords = [k.strip().lower() for k in query.split() if len(k.strip()) > 1]
+        for chunk_id, item in merged_map.items():
+            fname = item["filename"].lower()
+            if any(kw in fname for kw in keywords):
+                item["score"] = min(1.0, item["score"] + 0.35)
 
         # Sort merged results by final composite score descending
         hybrid_results = list(merged_map.values())
         hybrid_results.sort(key=lambda x: x["score"], reverse=True)
+
+        # Filter out trailing weak irrelevant noise if we have strong matches
+        if hybrid_results and hybrid_results[0]["score"] >= 0.5:
+            hybrid_results = [r for r in hybrid_results if r["score"] >= 0.30]
 
         return hybrid_results[:limit]
