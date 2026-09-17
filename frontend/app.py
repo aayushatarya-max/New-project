@@ -140,19 +140,19 @@ with st.sidebar:
                 st.caption(f"Size: {f['filesize']} bytes")
                 st.caption(f"Tags: {', '.join(f['tags'])}")
                 
-                f_bytes = get_file_content(f['id'])
-                if f_bytes:
-                    st.download_button(
-                        label=f"📥 Download / Open File",
-                        data=f_bytes,
-                        file_name=f['filename'],
-                        key=f"sb_dl_{f['id']}",
-                        use_container_width=True
-                    )
-                    if f['filetype'].lower() in ['png', 'jpg', 'jpeg']:
-                        st.image(f_bytes, caption=f['filename'], use_container_width=True)
-                    
-                if st.button("Delete File", key=f"del_{f['id']}", help="Permanently delete and de-index this file"):
+                if st.button("📁 Open File", key=f"sb_open_{f['id']}", use_container_width=True):
+                    try:
+                        open_res = requests.post(f"{API_URL}/files/{f['id']}/open-local", timeout=5)
+                        if open_res.status_code == 200:
+                            st.success(f"Opened '{f['filename']}' locally.")
+                        else:
+                            f_b = get_file_content(f['id'])
+                            if f_b:
+                                st.download_button("📥 Download File", data=f_b, file_name=f['filename'], key=f"sb_dl_{f['id']}", use_container_width=True)
+                    except Exception:
+                        pass
+
+                if st.button("Delete File", key=f"del_{f['id']}", help="Permanently delete and de-index this file", use_container_width=True):
                     if delete_file(f['id']):
                         st.session_state["files"] = fetch_files()
                         st.rerun()
@@ -211,32 +211,58 @@ if st.button("Search", type="primary", use_container_width=True) or search_query
                             filename = result.get('filename') or result.get('file', {}).get('filename', 'Unknown File')
                             file_type = (result.get('filetype') or result.get('file', {}).get('filetype', 'Unknown')).lower()
                             page = result.get('page_number', 1)
+                            chunk_text = result.get('chunk_text', '')
                             
-                            st.markdown(f"""
-                            <div class="result-card">
-                                <div class="result-title">📄 {filename} <span style="font-size: 14px; font-weight: normal; color: gray;">(Page {page})</span></div>
-                                <div class="result-meta">
-                                    Type: {file_type.upper()} • Score: {score:.4f} • Relevance: {'🔥 High Match' if score > 0.6 else '👍 Relevant'}
-                                </div>
-                                <div class="result-text">
-                                    "{result['chunk_text']}"
-                                </div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            if file_id:
-                                res_bytes = get_file_content(file_id)
-                                if res_bytes:
-                                    st.download_button(
-                                        label=f"📥 Open / Download {filename}",
-                                        data=res_bytes,
-                                        file_name=filename,
-                                        key=f"card_dl_{file_id}_{idx}",
-                                        type="primary",
-                                        use_container_width=True
-                                    )
-                                    if file_type in ['png', 'jpg', 'jpeg']:
-                                        st.image(res_bytes, caption=f"Preview: {filename}", use_container_width=True)
+                            # Truncate long snippets to keep cards compact
+                            snippet = chunk_text[:280] + "..." if len(chunk_text) > 280 else chunk_text
+
+                            card_container = st.container()
+                            with card_container:
+                                col_info, col_btn = st.columns([3.5, 1])
+                                with col_info:
+                                    st.markdown(f"""
+                                    <div style="padding: 10px; border: 1px solid #e0e0e0; border-radius: 6px; background-color: #f9f9f9; margin-bottom: 8px;">
+                                        <div style="font-size: 16px; font-weight: 600; color: #111;">📄 {filename} <span style="font-size: 13px; font-weight: normal; color: #666;">(Page/Section {page})</span></div>
+                                        <div style="font-size: 12px; color: #555; margin-top: 4px; margin-bottom: 6px;">
+                                            <b>Type:</b> {file_type.upper()} &nbsp;|&nbsp; <b>Relevance:</b> {score:.2f} ({'🔥 High' if score > 0.6 else '👍 Relevant'})
+                                        </div>
+                                        <div style="font-size: 13px; color: #333; font-style: italic;">
+                                            "{snippet}"
+                                        </div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+
+                                with col_btn:
+                                    if file_id:
+                                        # Open File action button
+                                        if st.button("📁 Open File", key=f"open_file_{file_id}_{idx}", use_container_width=True):
+                                            # 1. Attempt local Windows file opening via API
+                                            try:
+                                                open_res = requests.post(f"{API_URL}/files/{file_id}/open-local", timeout=5)
+                                                if open_res.status_code == 200:
+                                                    st.success(f"Opened '{filename}' locally.")
+                                                else:
+                                                    # 2. Live Cloud fallback
+                                                    st.info(f"File stored on Cloud/Server. Click below to view.")
+                                                    file_b = get_file_content(file_id)
+                                                    if file_b:
+                                                        st.download_button(
+                                                            label=f"📥 Download {filename}",
+                                                            data=file_b,
+                                                            file_name=filename,
+                                                            key=f"dl_fallback_{file_id}_{idx}",
+                                                            use_container_width=True
+                                                        )
+                                            except Exception:
+                                                file_b = get_file_content(file_id)
+                                                if file_b:
+                                                    st.download_button(
+                                                        label=f"📥 Download {filename}",
+                                                        data=file_b,
+                                                        file_name=filename,
+                                                        key=f"dl_exc_{file_id}_{idx}",
+                                                        use_container_width=True
+                                                    )
                 else:
                     st.error(f"Search failed: {response.json().get('detail')}")
             except Exception as e:

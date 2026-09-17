@@ -27,9 +27,11 @@ class SearchService:
     @classmethod
     def _get_index(cls) -> faiss.IndexIDMap:
         """
-        Thread-safe method to load the existing FAISS index from disk,
+        Thread-safe method to load the existing FAISS index from disk (or restore from cloud),
         or create a new empty IndexIDMap if it doesn't exist.
         """
+        from backend.services.storage_service import StorageService
+
         with cls._lock:
             if cls._index is None:
                 # Ensure the containing folder exists
@@ -37,6 +39,10 @@ class SearchService:
                 if dir_name and not os.path.exists(dir_name):
                     os.makedirs(dir_name, exist_ok=True)
                     logger.info("Created directory for FAISS index: %s", dir_name)
+
+                # Attempt cloud restore if local file is missing
+                if not os.path.exists(cls._index_path):
+                    StorageService.restore_faiss_index_from_cloud(cls._index_path)
 
                 if os.path.exists(cls._index_path):
                     logger.info("Loading existing FAISS index from: %s", cls._index_path)
@@ -56,12 +62,17 @@ class SearchService:
     @classmethod
     def _save_index(cls) -> None:
         """
-        Write the current state of the FAISS index to disk.
+        Write the current state of the FAISS index to disk and sync to cloud storage if enabled.
         """
+        from backend.services.storage_service import StorageService
+
         if cls._index is not None:
             try:
                 faiss.write_index(cls._index, cls._index_path)
                 logger.info("Saved FAISS index to disk. Total vectors: %d", cls._index.ntotal)
+                
+                # Cloud sync
+                StorageService.sync_faiss_index_to_cloud(cls._index_path)
             except Exception as e:
                 logger.error("Failed to write FAISS index to disk: %s", e)
                 raise IOError(f"Failed to save FAISS index: {e}") from e

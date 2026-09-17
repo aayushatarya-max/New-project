@@ -53,10 +53,8 @@ def upload_file(
             detail=f"Unsupported file type '{ext}'. Supported formats: {list(SUPPORTED_EXTENSIONS.keys())}"
         )
 
-    # 1. Ensure upload directory exists and save file physically
-    if not os.path.exists(UPLOAD_DIR):
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
-        
+    # 1. Save file using StorageService (handles Local vs. Supabase Storage)
+    file_bytes = file.file.read()
     file_path = os.path.join(UPLOAD_DIR, filename)
     
     # Check if file already exists in database
@@ -68,9 +66,10 @@ def upload_file(
         )
 
     try:
-        with open(file_path, "wb") as buffer:
-            buffer.write(file.file.read())
-        logger.info("Saved raw file to: %s", file_path)
+        from backend.services.storage_service import StorageService
+        storage_res = StorageService.save_uploaded_file(filename, file_bytes, UPLOAD_DIR)
+        file_path = storage_res["filepath"]
+        logger.info("Saved file via StorageService. Path: %s, Mode: %s", file_path, storage_res["storage_mode"])
     except Exception as e:
         logger.error("Failed to save uploaded file: %s", e)
         raise HTTPException(
@@ -78,7 +77,7 @@ def upload_file(
             detail=f"Could not save uploaded file: {e}"
         )
 
-    file_size = os.path.getsize(file_path)
+    file_size = len(file_bytes)
     file_type = SUPPORTED_EXTENSIONS[ext]
 
     # 2. Extract text page-by-page based on type
@@ -322,17 +321,60 @@ def download_file(
     db: Session = Depends(get_db)
 ):
     """
-    Serve raw file for direct viewing or downloading.
+    Serve raw file for direct viewing or downloading. If local file is missing (Live mode),
+    redirect to Supabase Storage public URL if available.
     """
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, RedirectResponse
+    from backend.services.storage_service import StorageService
+
     db_file = FileRepository.get_file(db, file_id)
-    if not db_file or not os.path.exists(db_file.filepath):
+    if not db_file:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"File with ID {file_id} not found on disk."
+            detail=f"File with ID {file_id} not found."
         )
-    return FileResponse(
-        path=db_file.filepath,
-        filename=db_file.filename
+
+    # 1. Local disk file response
+    if os.path.exists(db_file.filepath):
+        return FileResponse(
+            path=db_file.filepath,
+            filename=db_file.filename
+        )
+
+    # 2. Cloud Supabase Storage fallback
+    public_url = StorageService.get_public_url(f"uploads/{db_file.filename}")
+    if public_url:
+        return RedirectResponse(url=public_url)
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"File '{db_file.filename}' is not accessible locally or on cloud storage."
     )
+
+
+@router.post("/files/{file_id}/open-local")
+def open_local_file_route(
+    file_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Safely open the target file in Windows Explorer / OS default app when running locally.
+    """
+    from backend.services.storage_service import StorageService
+
+    db_file = FileRepository.get_file(db, file_id)
+    if not db_file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File with ID {file_id} not found."
+        )
+
+    success = StorageService.open_local_file(db_file.filepath)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Could not open local file '{db_file.filename}'. File path may not exist on this machine."
+        )
+
+    return {"message": f"Successfully opened '{db_file.filename}' on local OS."}
 

@@ -24,6 +24,7 @@ numpy>=1.24.0
 
 # Configuration & Utilities
 python-dotenv>=1.0.1
+supabase>=2.3.0
 
 # Testing
 pytest>=8.1.1
