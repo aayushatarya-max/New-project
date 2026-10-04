@@ -119,3 +119,35 @@ def test_delete_file_endpoint(mock_remove, override_db):
     # Verify listing is empty
     list_res = client.get("/api/files")
     assert len(list_res.json()) == 0
+
+
+@patch("backend.services.speech_service.SpeechService.transcribe")
+@patch.object(EmbeddingService, "get_embeddings")
+@patch.object(SearchService, "add_vectors")
+def test_upload_audio_file(mock_add_vectors, mock_get_embeddings, mock_transcribe, override_db):
+    """
+    Verify upload and transcription pipeline for an audio file (.mp3).
+    """
+    mock_transcribe.return_value = "Meeting recording about personal search engine architecture."
+    mock_get_embeddings.return_value = [[0.2] * 384]
+    mock_add_vectors.return_value = None
+
+    file_content = b"RIFF....WAVEfmt....data...."
+    response = client.post(
+        "/api/upload",
+        files={"file": ("meeting_note.mp3", file_content, "audio/mpeg")}
+    )
+
+    assert response.status_code == 201
+    json_data = response.json()
+    assert json_data["filename"] == "meeting_note.mp3"
+    assert json_data["chunks_indexed"] > 0
+
+    # Verify audio file is listed and tagged properly
+    list_response = client.get("/api/files?filetype=audio")
+    assert list_response.status_code == 200
+    files = list_response.json()
+    assert len(files) == 1
+    assert files[0]["filename"] == "meeting_note.mp3"
+    assert "audio" in files[0]["tags"]
+

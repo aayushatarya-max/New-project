@@ -15,6 +15,11 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///backend/database/memory.db")
 
 # SQLite needs 'check_same_thread=False' for multi-threaded access within FastAPI
 connect_args = {}
+
+# Fix for older postgres:// URLs (SQLAlchemy 1.4+ requires postgresql://)
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 if DATABASE_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False
     # Extract path and ensure containing folder exists
@@ -23,6 +28,11 @@ if DATABASE_URL.startswith("sqlite"):
     if dir_name and not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
         logger.info("Created database directory: %s", dir_name)
+elif DATABASE_URL.startswith("postgresql"):
+    # Render and Supabase often require SSL for external connections
+    if "sslmode=require" not in DATABASE_URL and "?" not in DATABASE_URL:
+        connect_args["sslmode"] = "require"
+
 
 try:
     logger.info("Initializing database engine with URL: %s", DATABASE_URL)

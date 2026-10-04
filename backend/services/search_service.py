@@ -173,7 +173,13 @@ class SearchService:
         
         # Apply metadata filters
         if filetype:
-            query_db = query_db.filter(FileModel.filetype == filetype.lower())
+            ft = filetype.lower()
+            if ft == "audio":
+                query_db = query_db.filter(FileModel.filetype.in_(["mp3", "wav", "m4a"]))
+            elif ft == "image":
+                query_db = query_db.filter(FileModel.filetype.in_(["png", "jpg", "jpeg"]))
+            else:
+                query_db = query_db.filter(FileModel.filetype == ft)
         if start_date:
             query_db = query_db.filter(FileModel.created_at >= start_date)
         if end_date:
@@ -247,7 +253,13 @@ class SearchService:
 
         # Apply metadata filters
         if filetype:
-            query_db = query_db.filter(FileModel.filetype == filetype.lower())
+            ft = filetype.lower()
+            if ft == "audio":
+                query_db = query_db.filter(FileModel.filetype.in_(["mp3", "wav", "m4a"]))
+            elif ft == "image":
+                query_db = query_db.filter(FileModel.filetype.in_(["png", "jpg", "jpeg"]))
+            else:
+                query_db = query_db.filter(FileModel.filetype == ft)
         if start_date:
             query_db = query_db.filter(FileModel.created_at >= start_date)
         if end_date:

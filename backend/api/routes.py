@@ -188,6 +188,14 @@ def upload_file(
 
         FileRepository.create_tags(db, db_file.id, list(set(tags)))
 
+        # Clean up temporary local file if we are in live cloud mode
+        if storage_res.get("storage_mode") == "live" and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                logger.info("Cleaned up temporary local file for cloud deployment: %s", file_path)
+            except Exception as cleanup_err:
+                logger.warning("Failed to clean up temporary file %s: %s", file_path, cleanup_err)
+
         logger.info("Ingestion completed successfully for file: %s", filename)
         return {
             "message": "File uploaded and indexed successfully",

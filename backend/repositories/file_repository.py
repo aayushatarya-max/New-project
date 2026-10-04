@@ -86,7 +86,13 @@ class FileRepository:
         """
         query = db.query(FileModel)
         if filetype:
-            query = query.filter(FileModel.filetype == filetype.lower())
+            ft = filetype.lower()
+            if ft == "audio":
+                query = query.filter(FileModel.filetype.in_(["mp3", "wav", "m4a"]))
+            elif ft == "image":
+                query = query.filter(FileModel.filetype.in_(["png", "jpg", "jpeg"]))
+            else:
+                query = query.filter(FileModel.filetype == ft)
         if start_date:
             query = query.filter(FileModel.created_at >= start_date)
         if end_date:
